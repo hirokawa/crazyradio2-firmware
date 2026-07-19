@@ -1,0 +1,6 @@
+board:
+  name: seeed_xiao_ble
+  full_name: XIAO BLE
+  vendor: seeed
+  socs:
+  - name: nrf52840
