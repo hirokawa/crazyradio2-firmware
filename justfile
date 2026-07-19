@@ -11,7 +11,7 @@ fetch-system-dep:
 
 
 # Download and install Zephyr SDK in ~/.local
-[confirm("Download and install Zephyr SDK in ~/.local?")]
+#[confirm("Download and install Zephyr SDK in ~/.local?")]
 fetch-zephyr-sdk:
     mkdir -p $HOME/.local
     curl -L https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v{{sdk_version}}/zephyr-sdk-{{sdk_version}}_{{os()}}-{{arch()}}_minimal.tar.xz | tar xJ -C $HOME/.local/
