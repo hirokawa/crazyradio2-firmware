@@ -68,6 +68,8 @@ int main(void)
 
 	esb_init();
 
+#if defined(CONFIG_FEM)
+	LOG_INF("FEM enabled");
 	fem_init();
 
 	// Test the FEM
@@ -84,7 +86,7 @@ int main(void)
 	enabled = fem_is_lna_enabled();
 	LOG_DBG("LNA enabled: %d", enabled);
 	fem_rxen_set(false);
-
+#endif
 	set_usb_app_version();
     
 	// Initialize USB device stack

@@ -46,7 +46,7 @@ static K_MUTEX_DEFINE(radio_busy);
 static K_SEM_DEFINE(radioXferDone, 0, 1);
 
 #define ESB_DEFAULT_CHANNEL 42
-#define ESB_DEFAULT_NRF_TX_POWER ((uint8_t)NRF_RADIO_TXPOWER_0DBM)
+#define ESB_DEFAULT_NRF_TX_POWER ((uint8_t)NRF_RADIO_TXPOWER_POS8DBM)
 
 static esbTestMode_t test_mode = esbTestModeIdle;
 static uint8_t test_tx_packet[64];
@@ -122,10 +122,11 @@ static void radio_isr(void *arg)
         // used for the timeout
 
         if (ack_enabled) {
+#if defined(CONFIG_FEM)
             // Switch the FEM to receive mode
             fem_txen_set(false);
             fem_rxen_set(true);
-
+#endif
             // Setup ack data address
             nrf_radio_packetptr_set(NRF_RADIO, ackBuffer);
 
@@ -149,9 +150,10 @@ static void radio_isr(void *arg)
         }
     } else {
         // Packet received or timeout
+#if defined(CONFIG_FEM)
         // Disable FEM
         fem_rxen_set(false);
-
+#endif
         timeout = nrf_timer_event_check(NRF_TIMER0, NRF_TIMER_EVENT_COMPARE1);
         nrf_timer_event_clear(NRF_TIMER0, NRF_TIMER_EVENT_COMPARE1);
 
@@ -225,11 +227,17 @@ void esb_init()
     IRQ_CONNECT(RADIO_IRQn, 1, radio_isr, NULL, 0);
     irq_enable(RADIO_IRQn);
 
+#if defined(CONFIG_FEM)
     fem_init();
+#endif
 
     current_channel = ESB_DEFAULT_CHANNEL;
     current_nrf_tx_power = (uint8_t)nrf_radio_txpower_get(NRF_RADIO);
+#if defined(CONFIG_FEM)
     test_pa_power = fem_get_power();
+#else
+    test_pa_power = 0;
+#endif
     test_mode = esbTestModeIdle;
 
     ack_enabled = true;
@@ -252,7 +260,9 @@ void esb_deinit()
     nrf_radio_power_set(NRF_RADIO, false);
     irq_disable(RADIO_IRQn);
 
+#if defined(CONFIG_FEM)
     fem_txen_set(false);
+#endif
     test_mode = esbTestModeIdle;
 
     k_sem_reset(&radioXferDone);
@@ -341,13 +351,20 @@ void esb_get_test_state(struct esbTestState_s *test_state)
     test_state->mode = (uint8_t)test_mode;
     test_state->channel = current_channel;
     test_state->nrf_tx_power = current_nrf_tx_power;
+#if defined(CONFIG_FEM)
     test_pa_power = fem_get_power();
     test_state->pa_power = test_pa_power;
+#else
+    test_state->pa_power = 0;
+#endif
     k_mutex_unlock(&radio_busy);
 }
 
 bool esb_set_test_mode(esbTestMode_t mode)
 {
+#if 1 /* carrier only mode cannot be used in Japan */
+	return false;
+#else
     switch (mode) {
         case esbTestModeIdle:
         case esbTestModeUnmodulatedCarrier:
@@ -371,11 +388,12 @@ bool esb_set_test_mode(esbTestMode_t mode)
         test_mode_stop_locked();
     }
     test_mode = mode;
-    if (mode != esbTestModeIdle && current_channel <= 100) {
+    if (mode != esbTestModeIdle && current_channel <= 83) {
         test_mode_start_locked();
     }
     k_mutex_unlock(&radio_busy);
     return true;
+#endif
 }
 
 bool esb_set_test_nrf_tx_power(uint8_t raw_power)
@@ -402,8 +420,12 @@ bool esb_set_test_pa_power(uint8_t power)
         return false;
     }
     k_mutex_lock(&radio_busy, K_FOREVER);
+#if defined(CONFIG_FEM)
     fem_set_power(power);
     test_pa_power = fem_get_power();
+#else
+    test_pa_power = 0;
+#endif
     k_mutex_unlock(&radio_busy);
     return true;
 }
@@ -411,7 +433,7 @@ bool esb_set_test_pa_power(uint8_t power)
 void esb_set_channel(uint16_t channel)
 {
     k_mutex_lock(&radio_busy, K_FOREVER);
-    if (channel <= 100) {
+    if (channel <= 83) {
         current_channel = channel;
         if (test_mode != esbTestModeIdle) {
             test_mode_restart_locked();
@@ -536,9 +558,10 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
             ack->length = 0;
             ackBuffer = ack;
 
+#if defined(CONFIG_FEM)
             // Enable FEM PA
             fem_txen_set(true);
-
+#endif
             sending = true;
             nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
 
@@ -682,7 +705,9 @@ static void test_mode_stop_locked(void)
     k_sleep(K_USEC(200));
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
+#if defined(CONFIG_FEM)
     fem_txen_set(false);
+#endif
     restore_normal_radio_config_locked();
 }
 
@@ -695,14 +720,15 @@ static void test_mode_start_locked(void)
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_READY);
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
 
-    if (current_channel <= 100) {
+    if (current_channel <= 83) {
         nrf_radio_frequency_set(NRF_RADIO, 2400 + current_channel);
     }
     nrf_radio_txpower_set(NRF_RADIO, (nrf_radio_txpower_t)current_nrf_tx_power);
+#if defined(CONFIG_FEM)
     fem_set_power(test_pa_power);
     fem_rxen_set(false);
     fem_txen_set(true);
-
+#endif
     if (test_mode == esbTestModeUnmodulatedCarrier) {
         nrf_radio_int_disable(NRF_RADIO, 0xffffffffUL);
         nrf_radio_shorts_set(NRF_RADIO, 0);
@@ -718,7 +744,9 @@ static void test_mode_start_locked(void)
     } else if (test_mode == esbTestModeModulatedCarrier2M) {
         nrf_radio_mode_set(NRF_RADIO, NRF_RADIO_MODE_NRF_2MBIT);
     } else {
+#if defined(CONFIG_FEM)
         fem_txen_set(false);
+#endif
         return;
     }
 
@@ -738,7 +766,7 @@ static void test_mode_restart_locked(void)
 
     test_mode_stop_locked();
     test_mode = mode;
-    if (current_channel <= 100) {
+    if (current_channel <= 83) {
         test_mode_start_locked();
     }
 }
@@ -801,9 +829,10 @@ void esb_sniffer_start(esb_sniffer_rx_cb_t cb)
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
     nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
 
+#if defined(CONFIG_FEM)
     // Enable FEM for RX
     fem_rxen_set(true);
-
+#endif
     // Clear TIMER0 for clean relative timestamps
     nrf_timer_task_trigger(NRF_TIMER0, NRF_TIMER_TASK_CLEAR);
 
@@ -841,8 +870,9 @@ bool esb_sniffer_send(struct esbPacket_s *packet, uint8_t address[5])
     k_sleep(K_USEC(200));
     nrf_radio_int_disable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+#if defined(CONFIG_FEM)
     fem_rxen_set(false);
-
+#endif
     // Clear any stale semaphore from ISR firing during RX shutdown
     k_sem_reset(&radioXferDone);
 
@@ -861,7 +891,9 @@ bool esb_sniffer_send(struct esbPacket_s *packet, uint8_t address[5])
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
     nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
 
+#if defined(CONFIG_FEM)
     fem_txen_set(true);
+#endif
     nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
 
     if (k_sem_take(&radioXferDone, K_MSEC(200)) != 0) {
@@ -874,7 +906,9 @@ bool esb_sniffer_send(struct esbPacket_s *packet, uint8_t address[5])
     // Clean up TX
     nrf_radio_int_disable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
     nrf_radio_shorts_set(NRF_RADIO, 0);
+#if defined(CONFIG_FEM)
     fem_txen_set(false);
+#endif
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
 
     // Restore pipe 0 address for sniffer RX
@@ -895,7 +929,9 @@ bool esb_sniffer_send(struct esbPacket_s *packet, uint8_t address[5])
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
     nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
 
+#if defined(CONFIG_FEM)
     fem_rxen_set(true);
+#endif
     nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_RXEN);
 
     k_mutex_unlock(&radio_busy);
@@ -924,9 +960,10 @@ void esb_sniffer_stop(void)
     nrf_radio_int_disable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
 
+#if defined(CONFIG_FEM)
     // Disable FEM
     fem_rxen_set(false);
-
+#endif
     // Restore RX address to pipe 0 only
     nrf_radio_rxaddresses_set(NRF_RADIO, 0x01u);
 
