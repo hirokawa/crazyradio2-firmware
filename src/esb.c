@@ -48,6 +48,14 @@ static K_SEM_DEFINE(radioXferDone, 0, 1);
 #define ESB_DEFAULT_CHANNEL 42
 #define ESB_DEFAULT_NRF_TX_POWER ((uint8_t)NRF_RADIO_TXPOWER_POS8DBM)
 
+#define CONFIG_JP_REG
+
+#if defined(CONFIG_JP_REG)
+#define BLE_CH_MAX 83
+#else
+#define BLE_CH_MAX 100
+#endif
+
 static esbTestMode_t test_mode = esbTestModeIdle;
 static uint8_t test_tx_packet[64];
 static uint8_t current_channel = ESB_DEFAULT_CHANNEL;
@@ -362,8 +370,16 @@ void esb_get_test_state(struct esbTestState_s *test_state)
 
 bool esb_set_test_mode(esbTestMode_t mode)
 {
-#if 1 /* carrier only mode cannot be used in Japan */
-	return false;
+
+#if defined(CONFIG_JP_REG) /* unmodulared carrier mode cannot be used in Japan */
+    switch (mode) {
+        case esbTestModeIdle:
+        case esbTestModeModulatedCarrier1M:
+        case esbTestModeModulatedCarrier2M:
+            break;
+        default:
+            return false;
+    }
 #else
     switch (mode) {
         case esbTestModeIdle:
@@ -374,6 +390,7 @@ bool esb_set_test_mode(esbTestMode_t mode)
         default:
             return false;
     }
+#endif
 
     if (!isInit && mode != esbTestModeIdle) {
         return false;
@@ -388,12 +405,11 @@ bool esb_set_test_mode(esbTestMode_t mode)
         test_mode_stop_locked();
     }
     test_mode = mode;
-    if (mode != esbTestModeIdle && current_channel <= 83) {
+    if (mode != esbTestModeIdle && current_channel <= BLE_CH_MAX) {
         test_mode_start_locked();
     }
     k_mutex_unlock(&radio_busy);
     return true;
-#endif
 }
 
 bool esb_set_test_nrf_tx_power(uint8_t raw_power)
@@ -433,7 +449,7 @@ bool esb_set_test_pa_power(uint8_t power)
 void esb_set_channel(uint16_t channel)
 {
     k_mutex_lock(&radio_busy, K_FOREVER);
-    if (channel <= 83) {
+    if (channel <= BLE_CH_MAX) {
         current_channel = channel;
         if (test_mode != esbTestModeIdle) {
             test_mode_restart_locked();
@@ -720,7 +736,7 @@ static void test_mode_start_locked(void)
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_READY);
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
 
-    if (current_channel <= 83) {
+    if (current_channel <= BLE_CH_MAX) {
         nrf_radio_frequency_set(NRF_RADIO, 2400 + current_channel);
     }
     nrf_radio_txpower_set(NRF_RADIO, (nrf_radio_txpower_t)current_nrf_tx_power);
@@ -766,7 +782,7 @@ static void test_mode_restart_locked(void)
 
     test_mode_stop_locked();
     test_mode = mode;
-    if (current_channel <= 83) {
+    if (current_channel <= BLE_CH_MAX) {
         test_mode_start_locked();
     }
 }

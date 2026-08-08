@@ -15,6 +15,12 @@ CONFIG_SERIAL=y
 # Enable console
 CONFIG_CONSOLE=y
 
+# Disable FEM
+#CONFIG_FEM=y
+
+# Regulation for Japan
+#CONFIG_JP_REG=y
+
 # Build UF2 by default, supported by the Adafruit nRF52 Bootloader
 CONFIG_BUILD_OUTPUT_UF2=y
 CONFIG_USE_DT_CODE_PARTITION=y
