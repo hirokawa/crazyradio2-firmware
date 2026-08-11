@@ -48,8 +48,6 @@ static K_SEM_DEFINE(radioXferDone, 0, 1);
 #define ESB_DEFAULT_CHANNEL 42
 #define ESB_DEFAULT_NRF_TX_POWER ((uint8_t)NRF_RADIO_TXPOWER_POS8DBM)
 
-#define CONFIG_JP_REG
-
 #if defined(CONFIG_JP_REG)
 #define BLE_CH_MAX 83
 #else

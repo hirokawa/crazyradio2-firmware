@@ -5,3 +5,9 @@
 
 config BOARD_SEEED_XIAO_BLE
 	select SOC_NRF52840_QIAA
+
+config JP_REG
+	bool "JAPAN Radio regulation support"
+	help
+	  Enable Japan Radio regulation support
+
